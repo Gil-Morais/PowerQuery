@@ -1,0 +1,54 @@
+let
+    // configurations start
+    Today=Date.From(DateTime.LocalNow()), // today's date
+    FromYear = 2021, // set the start year of the date dimension. dates start from 1st of January of this year
+    ToYear=2024, // set the end year of the date dimension. dates end at 31st of December of this year
+    StartofFiscalYear=7, // set the month number that is start of the financial year. example; if fiscal year start is July, value is 7
+    firstDayofWeek=Day.Monday, // set the week's start day, values: Day.Monday, Day.Sunday....
+    // configuration end
+    FromDate=#date(FromYear,1,1),
+    ToDate=#date(ToYear,12,31),
+    Source=List.Dates(
+        FromDate,
+        Duration.Days(ToDate-FromDate)+1,
+        #duration(1,0,0,0)
+    ),
+    #"Converted to Table" = Table.FromList(Source, Splitter.SplitByNothing(), null, null, ExtraValues.Error),
+    #"Renamed Columns" = Table.RenameColumns(#"Converted to Table",{{"Column1", "Date"}}),
+    #"Changed Type" = Table.TransformColumnTypes(#"Renamed Columns",{{"Date", type date}}),
+    #"Inserted Year" = Table.AddColumn(#"Changed Type", "Year", each Date.Year([Date]), Int64.Type),
+    #"Inserted Month" = Table.AddColumn(#"Inserted Year", "Month", each Date.Month([Date]), Int64.Type),
+    #"Inserted Days in Month" = Table.AddColumn(#"Inserted Month", "Days in Month", each Date.DaysInMonth([Date]), Int64.Type),
+    #"Inserted Day Name" = Table.AddColumn(#"Inserted Days in Month", "Day Name", each Date.DayOfWeekName([Date]), type text),
+    #"Inserted Day of Week" = Table.AddColumn(#"Inserted Day Name", "Day of Week", each Date.DayOfWeek([Date],firstDayofWeek), Int64.Type),
+    #"Inserted Day of Year" = Table.AddColumn(#"Inserted Day of Week", "Day of Year", each Date.DayOfYear([Date]), Int64.Type),
+    #"Inserted Month Name" = Table.AddColumn(#"Inserted Day of Year", "Month Name", each Date.MonthName([Date]), type text),
+    #"Inserted Quarter" = Table.AddColumn(#"Inserted Month Name", "Quarter", each Date.QuarterOfYear([Date])),
+    #"Added Prefix" = Table.TransformColumns(#"Inserted Quarter", {{"Quarter", each "Q" & Text.From(_, "es-ES"), type text}}),
+    #"Inserted Week of Year" = Table.AddColumn(#"Added Prefix", "Week of Year", each if [Year] = 2023 then Date.WeekOfYear([Date],firstDayofWeek)-1 else Date.WeekOfYear([Date],firstDayofWeek)),
+    #"Inserted Week of Month" = Table.AddColumn(#"Inserted Week of Year", "Week of Month", each Date.WeekOfMonth([Date],firstDayofWeek), Int64.Type),
+    #"Added Custom4" = Table.AddColumn(#"Inserted Week of Month", "Year-Month", each Date.ToText([Date],"MMM yyyy")),
+    #"Changed Type1" = Table.TransformColumnTypes(#"Added Custom4",{{"Year-Month", type text}}),
+    #"Added Custom5" = Table.AddColumn(#"Changed Type1", "Year-Month Code", each Date.ToText([Date],"yyyyMM")),
+    #"Replaced Value" = Table.ReplaceValue(#"Added Custom5",".","",Replacer.ReplaceText,{"Year-Month"}),
+    #"Replaced Value1" = Table.ReplaceValue(#"Replaced Value"," ","-",Replacer.ReplaceText,{"Year-Month"}),
+    #"Filtered Rows" = Table.SelectRows(#"Replaced Value1", each ([#"Year-Month"] <> null and [#"Year-Month"] <> "")),
+    #"Added Custom" = Table.AddColumn(#"Filtered Rows", "Current Month", each Date.IsInCurrentMonth([Date])),
+    #"Inserted Text Before Delimiter" = Table.AddColumn(#"Added Custom", "Day of Month", each Text.BeforeDelimiter(Text.From([Date], "es-ES"), "/"), type text),
+    #"Changed Type2" = Table.TransformColumnTypes(#"Inserted Text Before Delimiter",{{"Day of Month", Int64.Type}, {"Year-Month Code", Int64.Type}}),
+    #"Replaced Value2" = Table.ReplaceValue(#"Changed Type2","","0",Replacer.ReplaceValue,{"Year-Month"}),
+    #"Removed Errors" = Table.RemoveRowsWithErrors(#"Replaced Value2", {"Year-Month"}),
+    #"Replaced Value3" = Table.ReplaceValue(#"Removed Errors"," ","0",Replacer.ReplaceText,{"Year-Month"}),
+    #"Added Custom1" = Table.AddColumn(#"Replaced Value3", "Custom", each DateTimeZone.LocalNow()),
+    #"Changed Type3" = Table.TransformColumnTypes(#"Added Custom1",{{"Custom", type date}}),
+    #"Renamed Columns1" = Table.RenameColumns(#"Changed Type3",{{"Custom", "Today"}}),
+    #"Changed Type4" = Table.TransformColumnTypes(#"Renamed Columns1",{{"Date", type datetime}}),
+    #"Filtered Rows1" = Table.SelectRows(#"Changed Type4", each true),
+    #"Added Custom2" = Table.AddColumn(#"Filtered Rows1", "Current Month code", each let cm = Date.StartOfMonth(DateTime.LocalNow())
+in Date.Year(cm) *100 + Date.Month(cm)),
+    #"Inserted Subtraction" = Table.AddColumn(#"Added Custom2", "Subtraction", each [#"Year-Month Code"] - [Current Month code], type number),
+    #"Filtered Rows2" = Table.SelectRows(#"Inserted Subtraction", each true),
+    #"Added Conditional Column" = Table.AddColumn(#"Filtered Rows2", "Month Type", each if [Subtraction] = 0 then "Current Month" else if [Subtraction] = 1 then "Next Month" else if [Subtraction] = -1 then "Previous Month" else "Other"),
+    #"Removed Columns" = Table.RemoveColumns(#"Added Conditional Column",{"Current Month code", "Subtraction"})
+in
+    #"Removed Columns"
